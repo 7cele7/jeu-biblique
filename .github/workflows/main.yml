@@ -5,6 +5,10 @@ on:
     branches: [ "**" ]
   workflow_dispatch:
 
+env:
+  GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.daemon=false"
+  JAVA_TOOL_OPTIONS: "-Djava.awt.headless=true"
+
 jobs:
   build-apk:
     name: 🚀 Construire l'APK Android
@@ -39,7 +43,7 @@ jobs:
           chmod +x gradlew
 
       - name: 🔨 Compiler l'APK (Debug)
-        run: ./gradlew assembleDebug --no-daemon -Djava.awt.headless=true -x validateSigningDebug
+        run: ./gradlew assembleDebug -x validateSigningDebug
 
       - name: 📤 Sauvegarder l'APK
         uses: actions/upload-artifact@v4
