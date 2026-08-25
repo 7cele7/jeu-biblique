@@ -79,20 +79,3 @@ jobs:
         with:
           name: app-debug
           path: ${{ steps.project.outputs.root }}/app/build/outputs/apk/debug/*.apk
-          cd ${{ steps.project.outputs.root }}
-          npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap init "Yaounde Delices" "com.yaoundedelices.app" --web-dir ${{ steps.builddir.outputs.dir }}
-          npx cap add android
-          npx cap sync android
-
-      - name: Build APK
-        run: |
-          cd ${{ steps.project.outputs.root }}/android
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: web-app-apk
-          path: ${{ steps.project.outputs.root }}/android/app/build/outputs/apk/debug/*.apk
