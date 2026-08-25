@@ -1,1 +1,82 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Clean old files & extract ZIP
+        run: |
+          cd $GITHUB_WORKSPACE
+          
+          # Supprime tout sauf .git, .github et les ZIPs
+          find . -maxdepth 1 -not -path "./.git*" -not -path "./.github*" -not -path "." -not -name "*.zip" -exec rm -rf {} +
+          
+          echo "Files after cleanup:"
+          ls -la
+          
+          # Trouve et extrait le ZIP
+          ZIP_FILE=$(ls *.zip 2>/dev/null | head -1)
+          if [ -n "$ZIP_FILE" ]; then
+            echo "Extracting: $ZIP_FILE"
+            unzip -o -q "$ZIP_FILE"
+          else
+            echo "ERROR: No ZIP file found!"
+            exit 1
+          fi
+          
+          echo "Contents after extraction:"
+          ls -la
+
+      - name: Find project root
+        id: project
+        run: |
+          cd $GITHUB_WORKSPACE
+          SETTINGS=$(find . -maxdepth 3 -name "settings.gradle.kts" -o -name "settings.gradle" | head -1)
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: settings.gradle not found!"
+            ls -R
+            exit 1
+          fi
+          PROJECT_ROOT=$(dirname "$SETTINGS")
+          PROJECT_ROOT=${PROJECT_ROOT#./}
+          [ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="."
+          echo "root=$PROJECT_ROOT" >> $GITHUB_OUTPUT
+          echo "Found project at: $PROJECT_ROOT"
+
+      - name: Generate Debug Keystore
+        run: |
+          cd ${{ steps.project.outputs.root }}
+          keytool -genkey -v \
+            -keystore debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Build Debug APK
+        run: |
+          cd ${{ steps.project.outputs.root }}
+          gradle assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: ${{ steps.project.outputs.root }}/app/build/outputs/apk/debug/*.apk
 
