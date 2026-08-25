@@ -1,4 +1,4 @@
-name: Build Web to APK
+name: Build APK
 
 on:
   push:
@@ -15,60 +15,70 @@ jobs:
       - name: Clean old files & extract ZIP
         run: |
           cd $GITHUB_WORKSPACE
+          
+          # Supprime tout sauf .git, .github et les ZIPs
           find . -maxdepth 1 -not -path "./.git*" -not -path "./.github*" -not -path "." -not -name "*.zip" -exec rm -rf {} +
+          
+          echo "Files after cleanup:"
+          ls -la
+          
+          # Trouve et extrait le ZIP
           ZIP_FILE=$(ls *.zip 2>/dev/null | head -1)
           if [ -n "$ZIP_FILE" ]; then
+            echo "Extracting: $ZIP_FILE"
             unzip -o -q "$ZIP_FILE"
           else
             echo "ERROR: No ZIP file found!"
             exit 1
           fi
+          
+          echo "Contents after extraction:"
           ls -la
 
       - name: Find project root
         id: project
         run: |
           cd $GITHUB_WORKSPACE
-          PKG=$(find . -maxdepth 2 -name "package.json" | head -1)
-          if [ -z "$PKG" ]; then
-            echo "ERROR: package.json not found!"
+          SETTINGS=$(find . -maxdepth 3 -name "settings.gradle.kts" -o -name "settings.gradle" | head -1)
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: settings.gradle not found!"
+            ls -R
             exit 1
           fi
-          PROJECT_ROOT=$(dirname "$PKG")
+          PROJECT_ROOT=$(dirname "$SETTINGS")
           PROJECT_ROOT=${PROJECT_ROOT#./}
           [ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="."
           echo "root=$PROJECT_ROOT" >> $GITHUB_OUTPUT
           echo "Found project at: $PROJECT_ROOT"
 
-      - name: Setup Node.js & Java
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Install dependencies & build web
+      - name: Generate Debug Keystore
         run: |
           cd ${{ steps.project.outputs.root }}
-          npm install
-          npm run build
+          keytool -genkey -v \
+            -keystore debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
 
-      - name: Detect build folder
-        id: builddir
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Build Debug APK
         run: |
           cd ${{ steps.project.outputs.root }}
-          if [ -d "build" ]; then
-            echo "dir=build" >> $GITHUB_OUTPUT
-          elif [ -d "dist" ]; then
-            echo "dir=dist" >> $GITHUB_OUTPUT
-          else
-            echo "dir=." >> $GITHUB_OUTPUT
-          fi
+          gradle assembleDebug --no-daemon
 
-      - name: Add Capacitor Android
-        run: |
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: ${{ steps.project.outputs.root }}/app/build/outputs/apk/debug/*.apk
           cd ${{ steps.project.outputs.root }}
           npm install @capacitor/core @capacitor/cli @capacitor/android
           npx cap init "Yaounde Delices" "com.yaoundedelices.app" --web-dir ${{ steps.builddir.outputs.dir }}
