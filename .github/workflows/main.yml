@@ -30,7 +30,6 @@ jobs:
         id: project
         run: |
           cd $GITHUB_WORKSPACE
-          # Cherche package.json (projet React)
           PKG=$(find . -maxdepth 2 -name "package.json" | head -1)
           if [ -z "$PKG" ]; then
             echo "ERROR: package.json not found!"
@@ -51,10 +50,13 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install dependencies & build
+      - name: Fix dependencies & build
         run: |
           cd ${{ steps.project.outputs.root }}
-          npm install
+          # Supprime le lock corrompu s'il existe
+          rm -f package-lock.json
+          # Force l'installation en ignorant les conflits de version
+          npm install --force --legacy-peer-deps
           npm run build
 
       - name: Detect build folder
@@ -72,9 +74,9 @@ jobs:
       - name: Setup Capacitor Android
         run: |
           cd ${{ steps.project.outputs.root }}
-          # Installe Capacitor si pas déjà fait
-          npm install @capacitor/core @capacitor/cli @capacitor/android
-          # Initialise si pas déjà fait
+          # Installe les packages Capacitor nécessaires
+          npm install @capacitor/core @capacitor/cli @capacitor/android --force --legacy-peer-deps
+          # Si capacitor.config n'existe pas, on le crée
           if [ ! -f "capacitor.config.json" ] && [ ! -f "capacitor.config.ts" ]; then
             npx cap init "Yaounde Delices" "com.yaoundedelices.app" --web-dir ${{ steps.builddir.outputs.dir }}
           fi
@@ -82,7 +84,6 @@ jobs:
           if [ ! -d "android" ]; then
             npx cap add android
           fi
-          # Sync
           npx cap sync android
 
       - name: Build APK
