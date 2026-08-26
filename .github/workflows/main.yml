@@ -19,14 +19,19 @@ jobs:
           ZIP_FILE=$(ls *.zip | head -1)
           echo "Found ZIP: $ZIP_FILE"
           unzip -o -q "$ZIP_FILE"
-          echo "=== Structure extraite ==="
+          echo "=== Structure ==="
           ls -la
-          find . -maxdepth 2 -name "package.json" -not -path "./.github/*" | head -5
+          find . -maxdepth 3 -name "package.json" -not -path "./.github/*"
 
       - name: Find project directory
         id: find-project
         run: |
-          PROJECT_DIR=$(find . -maxdepth 2 -name "package.json" -not -path "./.github/*" | head -1 | xargs dirname)
+          PKG_JSON=$(find . -maxdepth 4 -name "package.json" -not -path "./.github/*" | head -1)
+          if [ -z "$PKG_JSON" ]; then
+            echo "ERROR: No package.json found in extracted archive!"
+            exit 1
+          fi
+          PROJECT_DIR=$(dirname "$PKG_JSON")
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_OUTPUT
           echo "Project found at: $PROJECT_DIR"
           ls -la "$PROJECT_DIR"
