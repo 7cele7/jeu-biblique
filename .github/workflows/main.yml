@@ -1,59 +1,67 @@
-name: Build and Deploy
+name: Build Android APK
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Récupérer le code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Installer Node.js
-      - name: Set up Node.js
+      - name: Find and extract ZIP archive
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq unzip
+          ZIP_FILE=$(ls *.zip | head -1)
+          echo "Found ZIP: $ZIP_FILE"
+          unzip -q "$ZIP_FILE"
+          ls -la
+
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # 3. Configurer Java (nécessaire pour Android)
-      - name: Set up Java
-        uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
-      # 4. Installer les dépendances (DANS LE BON DOSSIER !)
-      - name: Install dependencies
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install project dependencies
         run: npm install
-        working-directory: NOM_DU_DOSSIER_PROJET   # <--- CHANGEZ ICI !
 
-      # 5. Build du projet React (DANS LE BON DOSSIER !)
-      - name: Build project
+      - name: Install Capacitor & Android platform
+        run: |
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          npx cap init "Logos" com.logos.jeubiblique --web-dir dist
+          npx cap add android
+
+      - name: Build React app
         run: npm run build
-        working-directory: NOM_DU_DOSSIER_PROJET   # <--- CHANGEZ ICI !
 
-      # 6. Détecter le dossier de build Capacitor
-      - name: Detect build folder
-        run: ls
-        working-directory: NOM_DU_DOSSIER_PROJET
+      - name: Sync Capacitor
+        run: npx cap sync android
 
-      # 7. Build APK Android (Exemple générique)
-      - name: Build Capacitor Android
+      - name: Fix Kotlin dependency conflicts
+        run: |
+          sed -i '0,/dependencies {/s//configurations.all {\n    resolutionStrategy.eachDependency { details ->\n        if (details.requested.group == "org.jetbrains.kotlin") {\n            details.useVersion "1.8.22"\n        }\n    }\n}\ndependencies {/' android/app/build.gradle
+
+      - name: Build APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
-        working-directory: NOM_DU_DOSSIER_PROJET
 
-      # 8. Upload de l'APK (Optionnel)
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: NOM_DU_DOSSIER_PROJET/android/app/build/outputs/apk/debug/app-debug.apk
+          name: logos-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
