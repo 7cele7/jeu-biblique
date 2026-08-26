@@ -13,13 +13,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find and extract ZIP archive
+      - name: Extract ZIP archive
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq unzip
           ZIP_FILE=$(ls *.zip | head -1)
           echo "Found ZIP: $ZIP_FILE"
-          unzip -o -q "$ZIP_FILE"   # ← -o force l'écrasement sans demander
+          unzip -o -q "$ZIP_FILE"
+          echo "=== Structure extraite ==="
           ls -la
+          find . -maxdepth 2 -name "package.json" -not -path "./.github/*" | head -5
+
+      - name: Find project directory
+        id: find-project
+        run: |
+          PROJECT_DIR=$(find . -maxdepth 2 -name "package.json" -not -path "./.github/*" | head -1 | xargs dirname)
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_OUTPUT
+          echo "Project found at: $PROJECT_DIR"
+          ls -la "$PROJECT_DIR"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -36,27 +46,32 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install project dependencies
+        working-directory: ${{ steps.find-project.outputs.PROJECT_DIR }}
         run: npm install
 
       - name: Install Capacitor & Android platform
+        working-directory: ${{ steps.find-project.outputs.PROJECT_DIR }}
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
           npx cap init "Logos" com.logos.jeubiblique --web-dir dist
           npx cap add android
 
       - name: Build React app
+        working-directory: ${{ steps.find-project.outputs.PROJECT_DIR }}
         run: npm run build
 
       - name: Sync Capacitor
+        working-directory: ${{ steps.find-project.outputs.PROJECT_DIR }}
         run: npx cap sync android
 
       - name: Fix Kotlin dependency conflicts
+        working-directory: ${{ steps.find-project.outputs.PROJECT_DIR }}
         run: |
           sed -i '0,/dependencies {/s//configurations.all {\n    resolutionStrategy.eachDependency { details ->\n        if (details.requested.group == "org.jetbrains.kotlin") {\n            details.useVersion "1.8.22"\n        }\n    }\n}\ndependencies {/' android/app/build.gradle
 
       - name: Build APK
+        working-directory: ${{ steps.find-project.outputs.PROJECT_DIR }}/android
         run: |
-          cd android
           chmod +x gradlew
           ./gradlew assembleDebug
 
@@ -64,4 +79,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: logos-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ steps.find-project.outputs.PROJECT_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
